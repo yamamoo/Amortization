@@ -34,31 +34,90 @@
 
 package exercises;
 
-import java.io.Console;
-import java.lang.Math;
-import java.io.InputStreamReader;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.lang.NumberFormatException;
-import java.util.IllegalFormatException;
+import java.lang.Math;
 import java.lang.IllegalArgumentException;
 
 public class AmortizationSchedule {
 
-	private static Console console = System.console();
-
-	private long amountBorrowed = 0;		// in cents
+	// private fields
+	private long amountBorrowed = 0;
 	private double apr = 0d;
-	private int initialTermMonths = 0;
+	private int termMonths = 0;
+	private long monthlyPaymentAmount = 0;
 	
-	private final double monthlyInterestDivisor = 12d * 100d;
-	private double monthlyInterest = 0d;
-	private long monthlyPaymentAmount = 0;	// in cents
+	// constants
+	private final double MONTHLY_INTEREST_DIVISOR = 12d * 100d;
+	private static final Range<Double> BORROW_AMOUNT_RANGE = new Range<Double>( 0.01d, 1000000000000d );
+	private static final Range<Double> APR_RANGE = new Range<Double>( 0.000001d, 100d );
+	private static final Range<Integer> TERM_RANGE = new Range<Integer>( 1, 1000000 );
 
-	private static final double[] borrowAmountRange = new double[] { 0.01d, 1000000000000d };
-	private static final double[] aprRange = new double[] { 0.000001d, 100d };
-	private static final int[] termRange = new int[] { 1, 1000000 };
+	// 
+	// getters/setters of private fields
+	//
+	public long getAmountBorrowed() {
+		return amountBorrowed;
+	}
 	
+	public void setAmountBorrowed(double amount) throws IllegalArgumentException {
+		if (isValidBorrowAmount(amount) == false) {
+			throw new IllegalArgumentException();
+		}
+		amountBorrowed = Math.round(amount * 100);
+	}
+	
+	public double getAPR() {
+		return apr;
+	}
+	
+	public void setAPR(double interestRate) throws IllegalArgumentException {
+		if (isValidAPRValue(interestRate) == false) {
+			throw new IllegalArgumentException();
+		}
+		apr = interestRate;
+	}
+	
+	public int getTermMonths() {
+		return termMonths;
+	}
+	
+	public void setTermMonths(int years) throws IllegalArgumentException {
+		if (isValidTerm(years) == false) {
+			throw new IllegalArgumentException();
+		}
+		termMonths = years * 12;
+	}
+	
+	public long getMonthlyPaymentAmount() {
+		return monthlyPaymentAmount == 0 ? calculateMonthlyPayment() : monthlyPaymentAmount;
+	}
+	
+	public void setMonthlyPaymentAmount(long amount) throws IllegalArgumentException {
+		// the following shouldn't happen with the available valid ranges
+		// for borrow amount, apr, and term; however, without range validation,
+		// monthlyPaymentAmount as calculated by calculateMonthlyPayment()
+		// may yield incorrect values with extreme input values
+		if (amount > getAmountBorrowed()) {
+			throw new IllegalArgumentException();
+		}
+		monthlyPaymentAmount = amount;
+	}
+
+	//
+	// Constructor
+	//
+	public AmortizationSchedule(double amount, double interestRate, int years) throws IllegalArgumentException {
+
+		setAmountBorrowed(amount);
+		setAPR(interestRate);
+		setTermMonths(years);
+		setMonthlyPaymentAmount(calculateMonthlyPayment());
+		
+	}
+
+	//
+	// Calculate monthly payment amount based on loan amount, APR and number of months
+	//
 	private long calculateMonthlyPayment() {
 		// M = P * (J / (1 - (Math.pow(1/(1 + J), N))));
 		//
@@ -71,29 +130,33 @@ public class AmortizationSchedule {
 		// 
 		
 		// calculate J
-		monthlyInterest = apr / monthlyInterestDivisor;
-		
-		// this is 1 / (1 + J)
-		double tmp = Math.pow(1d + monthlyInterest, -1);
+		double monthlyInterest = getAPR() / MONTHLY_INTEREST_DIVISOR;
 		
 		// this is Math.pow(1/(1 + J), N)
-		tmp = Math.pow(tmp, initialTermMonths);
-		
-		// this is 1 / (1 - (Math.pow(1/(1 + J), N))))
-		tmp = Math.pow(1d - tmp, -1);
+		double tmp = Math.pow(1d/(1d + monthlyInterest), getTermMonths());
 		
 		// M = P * (J / (1 - (Math.pow(1/(1 + J), N))));
-		double rc = amountBorrowed * monthlyInterest * tmp;
+		double rc = getAmountBorrowed() * (monthlyInterest / (1d - tmp));
 		
 		return Math.round(rc);
 	}
+
+	//
+	// Recalculate the monthly payment amount based on the new loan amount, APR or number of monthsg
+	//
+	public double recalculate() {
+		long newMonthlyPaymentAmount = calculateMonthlyPayment();
+		setMonthlyPaymentAmount(newMonthlyPaymentAmount);
+		return newMonthlyPaymentAmount;
+	}
+	
 	
 	// The output should include:
 	//	The first column identifies the payment number.
 	//	The second column contains the amount of the payment.
 	//	The third column shows the amount paid to interest.
-	//	The fourth column has the current balance.  The total payment amount and the interest paid fields.
-	public void outputAmortizationSchedule() {
+	//	The fourth column has the current balance, the total payment amount and the interest paid fields.
+	public Schedule buildAmortizationSchedule() {
 		// 
 		// To create the amortization table, create a loop in your program and follow these steps:
 		// 1.      Calculate H = P x J, this is your current monthly interest
@@ -101,46 +164,40 @@ public class AmortizationSchedule {
 		// 3.      Calculate Q = P - C, this is the new balance of your principal of your loan.
 		// 4.      Set P equal to Q and go back to Step 1: You thusly loop around until the value Q (and hence P) goes to zero.
 		// 
-
-		String formatString = "%1$-20s%2$-20s%3$-20s%4$s,%5$s,%6$s\n";
-		printf(formatString,
-				"PaymentNumber", "PaymentAmount", "PaymentInterest",
-				"CurrentBalance", "TotalPayments", "TotalInterestPaid");
 		
-		long balance = amountBorrowed;
+		long balance = getAmountBorrowed();
 		int paymentNumber = 0;
 		long totalPayments = 0;
 		long totalInterestPaid = 0;
 		
-		// output is in dollars
-		formatString = "%1$-20d%2$-20.2f%3$-20.2f%4$.2f,%5$.2f,%6$.2f\n";
-		printf(formatString, paymentNumber++, 0d, 0d,
-				((double) amountBorrowed) / 100d,
-				((double) totalPayments) / 100d,
-				((double) totalInterestPaid) / 100d);
+		Schedule schedule = new Schedule();
+		MonthlySchedule ms = new MonthlySchedule(paymentNumber++, 0, 0, balance, 0, 0);
+		schedule.addMonth(ms);
 		
-		final int maxNumberOfPayments = initialTermMonths + 1;
-		while ((balance > 0) && (paymentNumber <= maxNumberOfPayments)) {
+		final int maxPaymentNumber = getTermMonths();
+		final long monthlyPaymentAmount = getMonthlyPaymentAmount();
+		final double monthlyInterest = getAPR() / MONTHLY_INTEREST_DIVISOR;
+		while (balance > 0) {
 			// Calculate H = P x J, this is your current monthly interest
-			long curMonthlyInterest = Math.round(((double) balance) * monthlyInterest);
-
-			// the amount required to payoff the loan
-			long curPayoffAmount = balance + curMonthlyInterest;
-			
-			// the amount to payoff the remaining balance may be less than the calculated monthlyPaymentAmount
-			long curMonthlyPaymentAmount = Math.min(monthlyPaymentAmount, curPayoffAmount);
-			
-			// it's possible that the calculated monthlyPaymentAmount is 0,
-			// or the monthly payment only covers the interest payment - i.e. no principal
-			// so the last payment needs to payoff the loan
-			if ((paymentNumber == maxNumberOfPayments) &&
-					((curMonthlyPaymentAmount == 0) || (curMonthlyPaymentAmount == curMonthlyInterest))) {
-				curMonthlyPaymentAmount = curPayoffAmount;
+			//double curMonthlyInterest = Math.floor((double)balance * monthlyInterest);
+			double curMonthlyInterest = Math.round((double)balance * monthlyInterest);
+	
+			// Determine current month's payment
+			long curMonthlyPaymentAmount;
+			if (paymentNumber != maxPaymentNumber) {
+				// not the final month
+				// the payment is equal to the calculated monthly payment amount (fixed)
+				curMonthlyPaymentAmount = monthlyPaymentAmount;
+			} else {
+				// the final month
+				// the amount required to payoff the loan is: [remaining balance] + [monthly interest]
+				// this may be less than the calculated monthly payment amount
+				curMonthlyPaymentAmount = balance + (long)curMonthlyInterest;
 			}
-			
+						
 			// Calculate C = M - H, this is your monthly payment minus your monthly interest,
 			// so it is the amount of principal you pay for that month
-			long curMonthlyPrincipalPaid = curMonthlyPaymentAmount - curMonthlyInterest;
+			long curMonthlyPrincipalPaid = curMonthlyPaymentAmount - (long)curMonthlyInterest;
 			
 			// Calculate Q = P - C, this is the new balance of your principal of your loan.
 			long curBalance = balance - curMonthlyPrincipalPaid;
@@ -148,100 +205,39 @@ public class AmortizationSchedule {
 			totalPayments += curMonthlyPaymentAmount;
 			totalInterestPaid += curMonthlyInterest;
 			
-			// output is in dollars
-			printf(formatString, paymentNumber++,
-					((double) curMonthlyPaymentAmount) / 100d,
-					((double) curMonthlyInterest) / 100d,
-					((double) curBalance) / 100d,
-					((double) totalPayments) / 100d,
-					((double) totalInterestPaid) / 100d);
+			// add this month's data to schedule
+			ms = new MonthlySchedule(paymentNumber++, 
+					curMonthlyPaymentAmount, 
+					(long)curMonthlyInterest, 
+					curBalance, 
+					totalPayments, 
+					totalInterestPaid);
+			schedule.addMonth(ms);
 						
 			// Set P equal to Q and go back to Step 1: You thusly loop around until the value Q (and hence P) goes to zero.
 			balance = curBalance;
 		}
+		
+		return schedule;
 	}
 	
-	public AmortizationSchedule(double amount, double interestRate, int years) throws IllegalArgumentException {
-
-		if ((isValidBorrowAmount(amount) == false) ||
-				(isValidAPRValue(interestRate) == false) ||
-				(isValidTerm(years) == false)) {
-			throw new IllegalArgumentException();
-		}
-
-		amountBorrowed = Math.round(amount * 100);
-		apr = interestRate;
-		initialTermMonths = years * 12;
-		
-		monthlyPaymentAmount = calculateMonthlyPayment();
-		
-		// the following shouldn't happen with the available valid ranges
-		// for borrow amount, apr, and term; however, without range validation,
-		// monthlyPaymentAmount as calculated by calculateMonthlyPayment()
-		// may yield incorrect values with extreme input values
-		if (monthlyPaymentAmount > amountBorrowed) {
-			throw new IllegalArgumentException();
-		}
-	}
+	// Static methods used by main()
 	
 	public static boolean isValidBorrowAmount(double amount) {
-		double range[] = getBorrowAmountRange();
-		return ((range[0] <= amount) && (amount <= range[1]));
+		return BORROW_AMOUNT_RANGE.contains(amount);
 	}
 	
 	public static boolean isValidAPRValue(double rate) {
-		double range[] = getAPRRange();
-		return ((range[0] <= rate) && (rate <= range[1]));
+		return APR_RANGE.contains(rate);
 	}
 	
 	public static boolean isValidTerm(int years) {
-		int range[] = getTermRange();
-		return ((range[0] <= years) && (years <= range[1]));
+		return TERM_RANGE.contains(years);
 	}
 	
-	public static final double[] getBorrowAmountRange() {
-		return borrowAmountRange;
-	}
-	
-	public static final double[] getAPRRange() {
-		return aprRange;
-	}
-
-	public static final int[] getTermRange() {
-		return termRange;
-	}
-	
-	private static void printf(String formatString, Object... args) {
-		
-		try {
-			if (console != null) {
-				console.printf(formatString, args);
-			} else {
-				System.out.print(String.format(formatString, args));
-			}
-		} catch (IllegalFormatException e) {
-			System.err.print("Error printing...\n");
-		}
-	}
-	
-	private static void print(String s) {
-		printf("%s", s);
-	}
-	
-	private static String readLine(String userPrompt) throws IOException {
-		String line = "";
-		
-		if (console != null) {
-			line = console.readLine(userPrompt);
-		} else {
-			// print("console is null\n");
-			BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
-
-			print(userPrompt);
-			line = bufferedReader.readLine();
-		}
-		line.trim();
-		return line;
+	@SuppressWarnings("rawtypes")
+	public static void printRangeError(Range range) {
+		Util.print("Please enter a positive value between " + range.getMininum() + " and " + range.getMaximum() + ". ");
 	}
 	
 	// 
@@ -261,9 +257,9 @@ public class AmortizationSchedule {
 		for (int i = 0; i< userPrompts.length; ) {
 			String userPrompt = userPrompts[i];
 			try {
-				line = readLine(userPrompt);
+				line = Util.readLine(userPrompt);
 			} catch (IOException e) {
-				print("An IOException was encountered. Terminating program.\n");
+				Util.print("An IOException was encountered. Terminating program.\n");
 				return;
 			}
 			
@@ -274,24 +270,21 @@ public class AmortizationSchedule {
 					amount = Double.parseDouble(line);
 					if (isValidBorrowAmount(amount) == false) {
 						isValidValue = false;
-						double range[] = getBorrowAmountRange();
-						print("Please enter a positive value between " + range[0] + " and " + range[1] + ". ");
+						printRangeError(BORROW_AMOUNT_RANGE);
 					}
 					break;
 				case 1:
 					apr = Double.parseDouble(line);
 					if (isValidAPRValue(apr) == false) {
 						isValidValue = false;
-						double range[] = getAPRRange();
-						print("Please enter a positive value between " + range[0] + " and " + range[1] + ". ");
+						printRangeError(APR_RANGE);
 					}
 					break;
 				case 2:
 					years = Integer.parseInt(line);
 					if (isValidTerm(years) == false) {
 						isValidValue = false;
-						int range[] = getTermRange();
-						print("Please enter a positive integer value between " + range[0] + " and " + range[1] + ". ");
+						printRangeError(TERM_RANGE);
 					}
 					break;
 				}
@@ -301,15 +294,22 @@ public class AmortizationSchedule {
 			if (isValidValue) {
 				i++;
 			} else {
-				print("An invalid value was entered.\n");
+				Util.print("An invalid value was entered.\n");
 			}
 		}
 		
 		try {
-			AmortizationSchedule as = new AmortizationSchedule(amount, apr, years);
-			as.outputAmortizationSchedule();
+			AmortizationSchedule3 as = new AmortizationSchedule3(amount, apr, years);
+			Schedule sched = as.buildAmortizationSchedule();
+			sched.outputSchedule();
+			// you can update amount, APR or years and recalculate
+			//as.setAmountBorrowed(200000);
+			//as.setAPR(3.49);
+			//as.setTerm
+			//as.recalculate();
+			//as.outputAmortizationSchedule();
 		} catch (IllegalArgumentException e) {
-			print("Unable to process the values entered. Terminating program.\n");
+			Util.print("Unable to process the values entered. Terminating program.\n");
 		}
 	}
 }
